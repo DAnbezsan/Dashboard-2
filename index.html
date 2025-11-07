@@ -1,345 +1,460 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8" />
-<title>Roleta Premiada</title>
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<style>
-  :root{
-    --gold1:#FFF9E6; --gold2:#FFD95A; --gold3:#D4AF37; --gold4:#7a5e00;
-    --black1:#222; --black2:#000;
-  }
-  body{
-    font-family: Arial, Helvetica, sans-serif;
-    background: radial-gradient(circle at center, #0b0b0b 0%, #030303 100%);
-    margin:0; padding:20px; display:flex; flex-direction:column; align-items:center; color:#fff;
-  }
-  h2{ margin:6px 0 18px; color:var(--gold2); text-shadow:0 0 12px rgba(255,215,0,0.2); }
-  .wheel-wrap{ position: relative; width:380px; height:420px; display:flex; align-items:center; justify-content:center; }
-  canvas{ border-radius:50%; display:block; width:320px; height:320px;
-    background: radial-gradient(circle, #fff 0%, #f1f1f1 100%);
-    box-shadow: 0 0 40px rgba(255,215,0,0.22), inset 0 0 25px rgba(0,0,0,0.35);
-  }
+import React, { useState, useEffect } from 'react';
+import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { Trophy, Users, Gift, TrendingUp, Calendar, Phone, RefreshCw, AlertCircle } from 'lucide-react';
 
-  /* casino lights ring */
-  .casino-lights{ position:absolute; width:420px; height:420px; border-radius:50%; pointer-events:none; top:50%; left:50%; transform:translate(-50%,-50%); z-index:1; }
-  .casino-lights::before, .casino-lights::after{
-    content:""; position:absolute; inset:0; border-radius:50%;
-    background: conic-gradient(from 0deg, rgba(255,215,0,0.95) 0 12deg, rgba(255,0,0,0.95) 12deg 24deg, rgba(255,215,0,0.2) 24deg 36deg, transparent 36deg 60deg);
-    mask: radial-gradient(closest-side, transparent 0 72%, black 73%);
-    animation: spin 5s linear infinite;
-    filter: blur(1px);
-  }
-  .casino-lights::after{ animation-duration:8s; opacity:0.7; transform-origin:center; filter: blur(3px) saturate(1.2); }
-  @keyframes spin{ from{ transform:rotate(0deg);} to{ transform:rotate(360deg);} }
+export default function RoletaKPIDashboard() {
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [dateRange, setDateRange] = useState('all');
+  const [lastUpdate, setLastUpdate] = useState(null);
+  
+  // COLE AQUI A URL DO SEU GOOGLE APPS SCRIPT
+  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxIjpHdsFx0TyHRs8YDe7fZlJ0l88SPQRklLu2QTMquIeHvvMuIr01ZRY-8GQi7yzXx/exec";
 
-  /* golden arrow (placed below wheel, pointing up) */
-  .arrow {
-    position:absolute;
-    bottom:-30px; /* below canvas */
-    left:50%;
-    transform:translateX(-50%);
-    width:0; height:0;
-    border-left:18px solid transparent;
-    border-right:18px solid transparent;
-    border-top:30px solid var(--gold3); /* triangle pointing up */
-    filter: drop-shadow(0 6px 6px rgba(0,0,0,0.45));
-    z-index:5;
-  }
-
-  #spinBtn{
-    margin-top:18px;padding:12px 26px;border-radius:10px;border:none;font-weight:700;
-    background:linear-gradient(90deg,var(--gold2),var(--gold3)); color:#000; cursor:pointer; box-shadow:0 8px 20px rgba(255,215,0,0.22);
-  }
-  #spinBtn:disabled{background:#666;color:#ddd;cursor:not-allowed}
-
-  .modal{ display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); align-items:center; justify-content:center; z-index:60; }
-  .modal-content{ background:#fff;color:#000;padding:18px;border-radius:10px;width:92%;max-width:380px; text-align:center; }
-  input{ padding:10px;width:92%;margin:8px 0;border-radius:8px;border:1px solid #ccc;font-size:16px; }
-  .btn{ padding:10px 14px;border-radius:8px;border:none;background:#007bff;color:#fff;cursor:pointer;margin:6px; }
-  .close-btn{ background:#111;color:#fff; }
-  #whatsappBtn{ background:linear-gradient(90deg,#25D366,#128C7E); color:#fff; border:none;padding:10px 12px;border-radius:8px; cursor:pointer; margin-top:8px; font-weight:700; }
-
-  #qrcode{ margin:10px auto; width:120px; height:120px; }
-
-  .info{ max-width:760px; margin-top:18px; background:#fff;color:#000;padding:12px;border-radius:8px; box-shadow:0 8px 18px rgba(0,0,0,0.08); text-align:left; }
-</style>
-</head>
-<body>
-<h2>🎰 Roleta Premiada</h2>
-
-<div class="wheel-wrap" aria-hidden="false">
-  <canvas id="wheel" width="320" height="320" aria-label="Roleta"></canvas>
-  <div class="arrow" aria-hidden="true"></div>
-  <div class="casino-lights" aria-hidden="true"></div>
-</div>
-
-<button id="spinBtn">Girar</button>
-
-<!-- phone modal -->
-<div id="phoneModal" class="modal" aria-hidden="true">
-  <div class="modal-content">
-    <h3>Informe seu telefone</h3>
-    <input id="phoneInput" placeholder="DDD + número (somente dígitos)" maxlength="13" />
-    <div>
-      <button id="savePhoneBtn" class="btn">Salvar</button>
-      <button id="cancelPhoneBtn" class="btn close-btn">Cancelar</button>
-    </div>
-    <p style="font-size:13px;color:#444;margin-top:8px;">Após salvar, clique em <strong>Girar</strong> novamente para iniciar o sorteio.</p>
-  </div>
-</div>
-
-<!-- result modal -->
-<div id="resultModal" class="modal" aria-hidden="true">
-  <div class="modal-content">
-    <h2 id="resultTitle" style="margin:6px 0;font-size:20px;"></h2>
-    <div id="qrcode"></div>
-    <div>
-      <button id="whatsappBtn">📲 Enviar via WhatsApp</button>
-    </div>
-    <div>
-      <button id="closeRes" class="btn close-btn">Fechar</button>
-    </div>
-  </div>
-</div>
-
-<div class="info">
-  <strong>Como participar:</strong>
-  <ol>
-    <li>Clique em <em>Girar</em> — o sistema pedirá seu telefone (mesmo que já tenha salvo).</li>
-    <li>Salve o telefone e em seguida clique em <em>Girar</em> novamente para iniciar o sorteio.</li>
-  </ol>
-  <p>Regras: cada telefone só pode girar uma vez (exceto ADM). Promoção válida até 10 de janeiro.</p>
-</div>
-
-<script>
-/* ---------- CONFIG ---------- */
-const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxIjpHdsFx0TyHRs8YDe7fZlJ0l88SPQRklLu2QTMquIeHvvMuIr01ZRY-8GQi7yzXx/exec";
-const OWNER_WHATSAPP = "SEU_NUMERO_AQUI";             // substituir por exemplo: 5577981633924
-const ADMIN_PHONE = "SEU_NUMERO_ADMIN_AQUI";          // substituir por exemplo: 77998652620
-const ADMIN_TAG = "ADM";
-
-/* ---------- PRIZES ---------- */
-const prizes = [
-  { label: "DESIGN 50%" },
-  { label: "FIO A FIO 50%" },
-  { label: "SHADOW L. 50%" },
-  { label: "DESIGN 100%" },
-  { label: "FIO A FIO 100%" },
-  { label: "SHADOW L. 100%" }
-];
-
-const prizesSequence = [
-  'DESIGN 50%','DESIGN 50%','DESIGN 50%','DESIGN 50%','DESIGN 50%',
-  'FIO A FIO 50%','FIO A FIO 50%','FIO A FIO 50%',
-  'DESIGN 50%','DESIGN 50%','DESIGN 50%','DESIGN 50%','DESIGN 50%',
-  'SHADOW L. 50%','SHADOW L. 50%',
-  'DESIGN 50%','DESIGN 50%','DESIGN 50%','DESIGN 50%','DESIGN 50%',
-  'FIO A FIO 50%','FIO A FIO 50%','FIO A FIO 50%',
-  'DESIGN 50%','DESIGN 50%','DESIGN 50%',
-  'FIO A FIO 50%','FIO A FIO 50%',
-  'SHADOW L. 100%',
-  'DESIGN 100%','DESIGN 100%',
-  'DESIGN 50%','DESIGN 50%',
-  'SHADOW L. 50%','SHADOW L. 50%',
-  'FIO A FIO 100%',
-  'FIO A FIO 50%','FIO A FIO 50%',
-  'DESIGN 100%','DESIGN 100%','DESIGN 100%',
-  'SHADOW L. 50%',
-  'DESIGN 100%','DESIGN 100%',
-  'FIO A FIO 100%',
-  'SHADOW L. 100%',
-  'FIO A FIO 100%'
-];
-
-/* ---------- CANVAS DRAW (gold metallic + centered text) ---------- */
-const canvas = document.getElementById("wheel");
-const ctx = canvas.getContext("2d");
-const cx = canvas.width / 2, cy = canvas.height / 2;
-const r = Math.min(cx, cy) - 12;
-
-function goldGrad(s,e){
-  const g = ctx.createRadialGradient(0, -r*0.2, r*0.02, 0, -r*0.2, r);
-  g.addColorStop(0, "#FFF9E6");
-  g.addColorStop(0.25, "#FFEFB3");
-  g.addColorStop(0.45, "#FFD95A");
-  g.addColorStop(0.7, "#D4AF37");
-  g.addColorStop(1, "#7a5e00");
-  return g;
-}
-function blackGrad(s,e){
-  const g = ctx.createLinearGradient(Math.cos(s)*r*0.2, Math.sin(s)*r*0.2, Math.cos(e)*r*0.9, Math.sin(e)*r*0.9);
-  g.addColorStop(0, "#4a4a4a");
-  g.addColorStop(0.5, "#222222");
-  g.addColorStop(1, "#000000");
-  return g;
-}
-function drawWrappedText(context, text, x, y, maxWidth){
-  if(context.measureText(text).width <= maxWidth){ context.fillText(text,x,y); return; }
-  const parts = text.split(' '); let line='', lines=[];
-  for(let n=0;n<parts.length;n++){
-    const testLine = line ? (line + ' ' + parts[n]) : parts[n];
-    if(context.measureText(testLine).width > maxWidth && line){ lines.push(line); line = parts[n]; }
-    else line = testLine;
-  }
-  if(line) lines.push(line);
-  const offset = (lines.length - 1) * -8;
-  for(let i=0;i<lines.length;i++) context.fillText(lines[i], x, y + offset + i*16);
-}
-
-function drawWheel(rotation=0){
-  const c = prizes.length, a = 2*Math.PI/c;
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  ctx.save();
-  ctx.translate(cx,cy);
-  ctx.rotate(rotation);
-
-  // rim shine
-  ctx.beginPath();
-  ctx.arc(0,0,r+8,0,2*Math.PI);
-  const rim = ctx.createRadialGradient(0,0,r*0.5,0,0,r+8);
-  rim.addColorStop(0,'rgba(255,255,255,0.12)');
-  rim.addColorStop(1,'rgba(0,0,0,0.35)');
-  ctx.fillStyle = rim; ctx.fill();
-
-  for(let i=0;i<c;i++){
-    const s = i*a, e = s+a;
-    ctx.beginPath(); ctx.moveTo(0,0); ctx.arc(0,0,r,s,e);
-    const isGold = (i % 2 === 1);
-    ctx.fillStyle = isGold ? goldGrad(s,e) : blackGrad(s,e);
-    ctx.fill();
-    ctx.strokeStyle = '#0d0d0d'; ctx.lineWidth = 1.6; ctx.stroke();
-
-    // text: center along arc
-    ctx.save();
-    const mid = s + a/2;
-    ctx.rotate(mid + Math.PI / prizes.length / 2); // slight compensation
-    ctx.translate(0, -r*0.62);
-    ctx.rotate(Math.PI/2);
-    ctx.font = "bold 13px Arial";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = isGold ? '#000' : '#FFD700';
-    drawWrappedText(ctx, prizes[i].label, 0, 0, 110);
-    ctx.restore();
-  }
-
-  // center hub
-  ctx.beginPath(); ctx.arc(0,0,r*0.12,0,2*Math.PI);
-  const hub = ctx.createRadialGradient(0,0,2,0,0,r*0.12); hub.addColorStop(0,'#fff'); hub.addColorStop(0.6,'rgba(255,255,255,0.2)'); hub.addColorStop(1,'rgba(255,255,255,0)');
-  ctx.fillStyle = hub; ctx.fill();
-  ctx.beginPath(); ctx.arc(0,0,9,0,2*Math.PI); ctx.fillStyle='#b80000'; ctx.fill();
-
-  ctx.restore();
-}
-drawWheel();
-
-/* ---------- LOGIC ---------- */
-let spinning = false;
-let currentIndex = parseInt(localStorage.getItem('currentIndex')||'0',10);
-let usedPhones = JSON.parse(localStorage.getItem('usedPhones')||'[]');
-let currentPrize = "";
-
-/* arrow target angle (degrees) - arrow points UP from bottom (north) == 270deg */
-const ARROW_DEG = 270;
-function degToRad(d){ return d * Math.PI / 180; }
-
-document.getElementById('spinBtn').addEventListener('click', ()=>{
-  if(spinning) return;
-  // always request phone first (prefill if already saved)
-  const stored = localStorage.getItem('wheelPhone') || '';
-  document.getElementById('phoneInput').value = stored;
-  document.getElementById('phoneModal').style.display = 'flex';
-});
-
-/* Phone modal behavior */
-document.getElementById('cancelPhoneBtn').addEventListener('click', ()=>{
-  document.getElementById('phoneModal').style.display = 'none';
-});
-document.getElementById('savePhoneBtn').addEventListener('click', ()=>{
-  const raw = document.getElementById('phoneInput').value.trim().replace(/\D/g,'');
-  if(!/^\d{10,13}$/.test(raw)){ alert('Digite um telefone válido (somente dígitos, 10–13 caracteres)'); return; }
-  localStorage.setItem('wheelPhone', raw);
-  document.getElementById('phoneModal').style.display = 'none';
-  // user must click "Girar" again to actually spin
-});
-
-/* When user clicks spin and modal is not open -> start spin */
-document.getElementById('spinBtn').addEventListener('click', ()=>{
-  if(spinning) return;
-  if(document.getElementById('phoneModal').style.display === 'flex') return;
-  const phone = localStorage.getItem('wheelPhone') || '';
-  if(!phone){ alert('Informe seu telefone antes de girar.'); return; }
-  startSpinWithPhone(phone);
-});
-
-function startSpinWithPhone(phone){
-  if(spinning) return;
-  if(phone !== ADMIN_PHONE && usedPhones.includes(phone)){ alert('Este número já participou da promoção.'); return; }
-
-  spinning = true;
-  const targetIndex = currentIndex % prizesSequence.length;
-  const targetLabel = prizesSequence[targetIndex];
-  const prizeIndex = prizes.findIndex(p=>p.label===targetLabel);
-  const spins = 4 + Math.floor(Math.random()*3);
-  const degreesPerSector = 360 / prizes.length;
-  const sectorMid = prizeIndex * degreesPerSector + degreesPerSector/2;
-  const offset = (Math.random()*6) - 3; // small random jitter
-  const finalDegrees = spins*360 + (ARROW_DEG - sectorMid) + offset;
-  const start = performance.now();
-  const duration = 4200 + Math.random()*800;
-
-  function animate(now){
-    const t = Math.min(1,(now-start)/duration);
-    const ease = 1 - Math.pow(1-t,3);
-    const curDeg = finalDegrees * ease;
-    drawWheel(degToRad(curDeg));
-    if(t < 1) requestAnimationFrame(animate); else {
-      spinning = false;
-      currentIndex++;
-      currentPrize = targetLabel;
-      if(phone !== ADMIN_PHONE){
-        usedPhones.push(phone);
-        localStorage.setItem('usedPhones', JSON.stringify(usedPhones));
+  const fetchData = async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Check if URL is configured
+      if (SCRIPT_URL === "https://script.google.com/macros/s/AKfycbxIjpHdsFx0TyHRs8YDe7fZlJ0l88SPQRklLu2QTMquIeHvvMuIr01ZRY-8GQi7yzXx/exec") {
+        // Use mock data for demo
+        const mockData = generateMockData();
+        setData(mockData);
+        setLastUpdate(new Date());
+        setLoading(false);
+        return;
       }
-      localStorage.setItem('currentIndex', currentIndex);
-      showResult(targetLabel, phone);
+
+      const response = await fetch(SCRIPT_URL);
+      const result = await response.json();
+      
+      if (result.success) {
+        setData(result.data || []);
+        setLastUpdate(new Date());
+      } else {
+        setError(result.error || 'Erro ao carregar dados');
+      }
+    } catch (err) {
+      setError('Erro de conexão: ' + err.message);
+    } finally {
+      setLoading(false);
     }
-  }
-  requestAnimationFrame(animate);
-}
-
-/* ---------- RESULT & WHATSAPP & SHEETS ---------- */
-function showResult(label, phone){
-  const modal = document.getElementById('resultModal');
-  document.getElementById('resultTitle').textContent = label;
-  modal.style.display = 'flex';
-  document.getElementById('qrcode').innerHTML = '';
-  new QRCode(document.getElementById("qrcode"), { text: window.location.href, width:120, height:120 });
-
-  // WhatsApp button
-  document.getElementById('whatsappBtn').onclick = () => {
-    const owner = OWNER_WHATSAPP;
-    const msg = `🎉 Olá! Ganhei na Roleta Premiada!\n🏆 Prêmio: ${label}\n📱 Telefone: ${phone}`;
-    window.open(`https://wa.me/${owner}?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
-  // Send JSON to Apps Script (using fetch with JSON body)
-  try{
-    const payload = { phone: phone, prize: label, date: new Date().toISOString(), admin: (phone===ADMIN_PHONE ? ADMIN_TAG : '') };
-    fetch(GOOGLE_SCRIPT_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    }).catch(()=>{/* silent */});
-  }catch(e){ console.warn('Erro envio sheets', e); }
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const filteredData = filterByDateRange(data, dateRange);
+  const kpis = calculateKPIs(filteredData);
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white p-4">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="mb-8 flex justify-between items-start">
+          <div>
+            <h1 className="text-4xl font-bold text-yellow-400 mb-2 flex items-center gap-3">
+              🎰 Dashboard - Roleta Premiada
+            </h1>
+            <p className="text-gray-400">Acompanhe os KPIs da sua promoção em tempo real</p>
+            {lastUpdate && (
+              <p className="text-xs text-gray-500 mt-1">
+                Última atualização: {lastUpdate.toLocaleString('pt-BR')}
+              </p>
+            )}
+          </div>
+          <button
+            onClick={fetchData}
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 bg-yellow-500 text-black rounded-lg hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <RefreshCw className={loading ? 'animate-spin' : ''} size={18} />
+            Atualizar
+          </button>
+        </div>
+
+        {/* Error Alert */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-900 border border-red-700 rounded-lg flex items-start gap-3">
+            <AlertCircle className="text-red-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold text-red-200">Erro ao carregar dados</p>
+              <p className="text-sm text-red-300">{error}</p>
+              <p className="text-xs text-red-400 mt-2">
+                Verifique se a URL do Apps Script está configurada corretamente
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Loading State */}
+        {loading && (
+          <div className="mb-6 p-8 bg-gray-800 rounded-lg text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-400 mx-auto mb-4"></div>
+            <p className="text-gray-400">Carregando dados...</p>
+          </div>
+        )}
+
+        {/* Date Filter */}
+        <div className="mb-6 flex gap-2 flex-wrap">
+          <button onClick={() => setDateRange('all')} className={`px-4 py-2 rounded-lg transition ${dateRange === 'all' ? 'bg-yellow-500 text-black' : 'bg-gray-700 hover:bg-gray-600'}`}>
+            Todos
+          </button>
+          <button onClick={() => setDateRange('today')} className={`px-4 py-2 rounded-lg transition ${dateRange === 'today' ? 'bg-yellow-500 text-black' : 'bg-gray-700 hover:bg-gray-600'}`}>
+            Hoje
+          </button>
+          <button onClick={() => setDateRange('week')} className={`px-4 py-2 rounded-lg transition ${dateRange === 'week' ? 'bg-yellow-500 text-black' : 'bg-gray-700 hover:bg-gray-600'}`}>
+            7 dias
+          </button>
+          <button onClick={() => setDateRange('month')} className={`px-4 py-2 rounded-lg transition ${dateRange === 'month' ? 'bg-yellow-500 text-black' : 'bg-gray-700 hover:bg-gray-600'}`}>
+            30 dias
+          </button>
+        </div>
+
+        {!loading && data.length === 0 && (
+          <div className="mb-6 p-8 bg-gray-800 rounded-lg text-center border border-gray-700">
+            <Trophy className="mx-auto mb-4 text-gray-600" size={48} />
+            <p className="text-gray-400">Nenhuma participação registrada ainda</p>
+            <p className="text-sm text-gray-500 mt-2">Os dados aparecerão aqui após os primeiros giros da roleta</p>
+          </div>
+        )}
+
+        {!loading && data.length > 0 && (
+          <>
+            {/* KPI Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+              <KPICard 
+                icon={<Users />}
+                title="Participantes"
+                value={kpis.totalParticipants}
+                subtitle="únicos"
+                color="blue"
+              />
+              <KPICard 
+                icon={<Gift />}
+                title="Prêmios"
+                value={kpis.totalPrizes}
+                subtitle="distribuídos"
+                color="yellow"
+              />
+              <KPICard 
+                icon={<Phone />}
+                title="Taxa WhatsApp"
+                value={`${kpis.whatsappRate}%`}
+                subtitle="conversão"
+                color="green"
+              />
+              <KPICard 
+                icon={<TrendingUp />}
+                title="Prêmios 100%"
+                value={kpis.fullPrizes}
+                subtitle={`${kpis.fullPrizesPercent}% do total`}
+                color="purple"
+              />
+            </div>
+
+            {/* Charts Row 1 */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+              {/* Prize Distribution */}
+              <ChartCard title="Distribuição de Prêmios">
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={kpis.prizeDistribution}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={renderCustomLabel}
+                      outerRadius={100}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {kpis.prizeDistribution.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </ChartCard>
+
+              {/* Prize Types Bar */}
+              <ChartCard title="Prêmios por Tipo">
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={kpis.prizeTypes}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+                    <XAxis dataKey="name" stroke="#999" />
+                    <YAxis stroke="#999" />
+                    <Tooltip contentStyle={{ backgroundColor: '#333', border: 'none' }} />
+                    <Bar dataKey="count" fill="#FFD700" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartCard>
+            </div>
+
+            {/* Charts Row 2 */}
+            <div className="grid grid-cols-1 gap-6 mb-6">
+              {/* Timeline */}
+              <ChartCard title="Participações ao Longo do Tempo">
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={kpis.timeline}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+                    <XAxis dataKey="date" stroke="#999" />
+                    <YAxis stroke="#999" />
+                    <Tooltip contentStyle={{ backgroundColor: '#333', border: 'none' }} />
+                    <Legend />
+                    <Line type="monotone" dataKey="participantes" stroke="#FFD700" strokeWidth={2} />
+                    <Line type="monotone" dataKey="premios100" stroke="#FF6B6B" strokeWidth={2} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </ChartCard>
+            </div>
+
+            {/* Recent Winners Table */}
+            <ChartCard title="Últimos Ganhadores">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead className="border-b border-gray-700">
+                    <tr>
+                      <th className="pb-3 text-yellow-400">Data/Hora</th>
+                      <th className="pb-3 text-yellow-400">Telefone</th>
+                      <th className="pb-3 text-yellow-400">Prêmio</th>
+                      <th className="pb-3 text-yellow-400">WhatsApp</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {kpis.recentWinners.map((winner, idx) => (
+                      <tr key={idx} className="border-b border-gray-800">
+                        <td className="py-3 text-gray-300 text-sm">{formatDateTime(winner.datetime)}</td>
+                        <td className="py-3 text-gray-300">{maskPhone(winner.phone)}</td>
+                        <td className="py-3">
+                          <span className={`px-2 py-1 rounded text-xs font-bold ${winner.prize.includes('100%') ? 'bg-purple-600' : 'bg-blue-600'}`}>
+                            {winner.prize}
+                          </span>
+                        </td>
+                        <td className="py-3">{winner.whatsapp ? '✅' : '⏳'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </ChartCard>
+          </>
+        )}
+
+        {/* Footer Info */}
+        <div className="mt-8 p-4 bg-gray-800 rounded-lg border border-gray-700">
+          <h3 className="font-bold text-yellow-400 mb-2">📊 Instruções de Configuração:</h3>
+          <ol className="text-sm text-gray-300 space-y-2 list-decimal list-inside">
+            <li>Abra seu Google Sheets e vá em <strong>Extensions → Apps Script</strong></li>
+            <li>Cole o código do Apps Script (fornecido separadamente)</li>
+            <li>Clique em <strong>Deploy → New deployment</strong></li>
+            <li>Escolha <strong>Web app</strong>, Execute as: <strong>Me</strong>, Who has access: <strong>Anyone</strong></li>
+            <li>Copie a URL gerada e cole no código deste dashboard (variável SCRIPT_URL)</li>
+            <li>Clique em <strong>Atualizar</strong> para carregar os dados reais!</li>
+          </ol>
+          <p className="text-xs text-gray-500 mt-3">
+            💡 Enquanto não configurar, o dashboard mostra dados de exemplo para demonstração
+          </p>
+        </div>
+      </div>
+    </div>
+  );
 }
 
-document.getElementById('closeRes').addEventListener('click', ()=>{ document.getElementById('resultModal').style.display='none'; });
+// Components
+function KPICard({ icon, title, value, subtitle, color }) {
+  const colors = {
+    blue: 'from-blue-600 to-blue-800',
+    yellow: 'from-yellow-600 to-yellow-800',
+    green: 'from-green-600 to-green-800',
+    purple: 'from-purple-600 to-purple-800'
+  };
 
-/* ---------- init ---------- */
-(function(){ drawWheel(); })();
-</script>
-</body>
-</html>
+  return (
+    <div className={`bg-gradient-to-br ${colors[color]} p-6 rounded-xl shadow-lg`}>
+      <div className="flex items-start justify-between mb-3">
+        <div className="text-white opacity-80">{icon}</div>
+      </div>
+      <div>
+        <p className="text-gray-200 text-sm mb-1">{title}</p>
+        <p className="text-3xl font-bold text-white mb-1">{value}</p>
+        <p className="text-xs text-gray-200 opacity-75">{subtitle}</p>
+      </div>
+    </div>
+  );
+}
+
+function ChartCard({ title, children }) {
+  return (
+    <div className="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
+      <h3 className="text-xl font-bold text-yellow-400 mb-4">{title}</h3>
+      {children}
+    </div>
+  );
+}
+
+// Helper functions
+function formatDateTime(datetime) {
+  if (!datetime) return '-';
+  if (typeof datetime === 'string') {
+    return datetime;
+  }
+  return new Date(datetime).toLocaleString('pt-BR');
+}
+
+function maskPhone(phone) {
+  if (!phone) return '-';
+  const str = phone.toString();
+  if (str.length <= 4) return str;
+  return str.slice(0, -4).replace(/./g, '*') + str.slice(-4);
+}
+
+function generateMockData() {
+  const prizes = ['DESIGN 50%', 'FIO A FIO 50%', 'SHADOW L. 50%', 'DESIGN 100%', 'FIO A FIO 100%', 'SHADOW L. 100%'];
+  const data = [];
+  const now = new Date();
+  
+  for (let i = 0; i < 45; i++) {
+    const date = new Date(now - (45 - i) * 24 * 60 * 60 * 1000);
+    const count = Math.floor(Math.random() * 8) + 2;
+    
+    for (let j = 0; j < count; j++) {
+      const prizeIndex = Math.floor(Math.random() * prizes.length);
+      data.push({
+        phone: `77${Math.floor(Math.random() * 900000000 + 100000000)}`,
+        prize: prizes[prizeIndex],
+        datetime: date.toLocaleString('pt-BR'),
+        whatsapp: Math.random() > 0.3
+      });
+    }
+  }
+  
+  return data;
+}
+
+function filterByDateRange(data, range) {
+  if (range === 'all') return data;
+  
+  const now = new Date();
+  const cutoff = new Date();
+  
+  if (range === 'today') {
+    cutoff.setHours(0, 0, 0, 0);
+  } else if (range === 'week') {
+    cutoff.setDate(now.getDate() - 7);
+  } else if (range === 'month') {
+    cutoff.setDate(now.getDate() - 30);
+  }
+  
+  return data.filter(d => {
+    const itemDate = typeof d.datetime === 'string' 
+      ? parseBRDate(d.datetime)
+      : new Date(d.datetime);
+    return itemDate >= cutoff;
+  });
+}
+
+function parseBRDate(dateStr) {
+  // Parse "DD/MM/YYYY HH:mm:ss" format
+  const parts = dateStr.match(/(\d+)\/(\d+)\/(\d+)\s+(\d+):(\d+):(\d+)/);
+  if (parts) {
+    return new Date(parts[3], parts[2] - 1, parts[1], parts[4], parts[5], parts[6]);
+  }
+  return new Date(dateStr);
+}
+
+function calculateKPIs(data) {
+  if (data.length === 0) {
+    return {
+      totalParticipants: 0,
+      totalPrizes: 0,
+      whatsappRate: 0,
+      fullPrizes: 0,
+      fullPrizesPercent: 0,
+      prizeDistribution: [],
+      prizeTypes: [],
+      timeline: [],
+      recentWinners: []
+    };
+  }
+
+  const totalParticipants = new Set(data.map(d => d.phone)).size;
+  const totalPrizes = data.length;
+  const whatsappCount = data.filter(d => d.whatsapp).length;
+  const whatsappRate = totalPrizes > 0 ? Math.round((whatsappCount / totalPrizes) * 100) : 0;
+  const fullPrizes = data.filter(d => d.prize.includes('100%')).length;
+  const fullPrizesPercent = totalPrizes > 0 ? Math.round((fullPrizes / totalPrizes) * 100) : 0;
+
+  // Prize distribution
+  const prizeCount = {};
+  data.forEach(d => {
+    prizeCount[d.prize] = (prizeCount[d.prize] || 0) + 1;
+  });
+  const prizeDistribution = Object.entries(prizeCount).map(([name, value]) => ({ name, value }));
+
+  // Prize types
+  const typeCount = { 'DESIGN': 0, 'FIO A FIO': 0, 'SHADOW L.': 0 };
+  data.forEach(d => {
+    if (d.prize.includes('DESIGN')) typeCount['DESIGN']++;
+    else if (d.prize.includes('FIO A FIO')) typeCount['FIO A FIO']++;
+    else if (d.prize.includes('SHADOW')) typeCount['SHADOW L.']++;
+  });
+  const prizeTypes = Object.entries(typeCount).map(([name, count]) => ({ name, count }));
+
+  // Timeline
+  const dateCount = {};
+  const date100Count = {};
+  data.forEach(d => {
+    const dateStr = typeof d.datetime === 'string' 
+      ? d.datetime.split(' ')[0]
+      : new Date(d.datetime).toLocaleDateString('pt-BR');
+    
+    dateCount[dateStr] = (dateCount[dateStr] || 0) + 1;
+    if (d.prize.includes('100%')) {
+      date100Count[dateStr] = (date100Count[dateStr] || 0) + 1;
+    }
+  });
+  const timeline = Object.keys(dateCount).sort((a, b) => {
+    const dateA = parseBRDate(a + ' 00:00:00');
+    const dateB = parseBRDate(b + ' 00:00:00');
+    return dateA - dateB;
+  }).map(date => ({
+    date: date,
+    participantes: dateCount[date],
+    premios100: date100Count[date] || 0
+  }));
+
+  // Recent winners
+  const recentWinners = data.slice(-10).reverse();
+
+  return {
+    totalParticipants,
+    totalPrizes,
+    whatsappRate,
+    fullPrizes,
+    fullPrizesPercent,
+    prizeDistribution,
+    prizeTypes,
+    timeline,
+    recentWinners
+  };
+}
+
+const COLORS = ['#FFD700', '#FF6B6B', '#4ECDC4', '#95E1D3', '#F38181', '#AA96DA'];
+
+const renderCustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
+  if (percent < 0.05) return null;
+  const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+  const x = cx + radius * Math.cos(-midAngle * Math.PI / 180);
+  const y = cy + radius * Math.sin(-midAngle * Math.PI / 180);
+
+  return (
+    <text x={x} y={y} fill="white" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" className="text-xs font-bold">
+      {`${(percent * 100).toFixed(0)}%`}
+    </text>
+  );
+};
