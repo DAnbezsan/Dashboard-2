@@ -1,124 +1,345 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dashboard - Roleta Premiada</title>
+<meta charset="utf-8" />
+<title>Roleta Premiada</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
-  body {
-    font-family: Arial, sans-serif;
-    background: #f4f4f4;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
+  :root{
+    --gold1:#FFF9E6; --gold2:#FFD95A; --gold3:#D4AF37; --gold4:#7a5e00;
+    --black1:#222; --black2:#000;
   }
-  h2 {
-    margin-top: 30px;
-    color: #333;
+  body{
+    font-family: Arial, Helvetica, sans-serif;
+    background: radial-gradient(circle at center, #0b0b0b 0%, #030303 100%);
+    margin:0; padding:20px; display:flex; flex-direction:column; align-items:center; color:#fff;
   }
-  .container {
-    background: #fff;
-    padding: 20px;
-    margin-top: 20px;
-    border-radius: 10px;
-    box-shadow: 0 0 10px rgba(0,0,0,0.1);
-    text-align: center;
-    width: 90%;
-    max-width: 400px;
+  h2{ margin:6px 0 18px; color:var(--gold2); text-shadow:0 0 12px rgba(255,215,0,0.2); }
+  .wheel-wrap{ position: relative; width:380px; height:420px; display:flex; align-items:center; justify-content:center; }
+  canvas{ border-radius:50%; display:block; width:320px; height:320px;
+    background: radial-gradient(circle, #fff 0%, #f1f1f1 100%);
+    box-shadow: 0 0 40px rgba(255,215,0,0.22), inset 0 0 25px rgba(0,0,0,0.35);
   }
-  button {
-    background: #007bff;
-    color: white;
-    border: none;
-    padding: 12px 24px;
-    margin: 10px;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 16px;
+
+  /* casino lights ring */
+  .casino-lights{ position:absolute; width:420px; height:420px; border-radius:50%; pointer-events:none; top:50%; left:50%; transform:translate(-50%,-50%); z-index:1; }
+  .casino-lights::before, .casino-lights::after{
+    content:""; position:absolute; inset:0; border-radius:50%;
+    background: conic-gradient(from 0deg, rgba(255,215,0,0.95) 0 12deg, rgba(255,0,0,0.95) 12deg 24deg, rgba(255,215,0,0.2) 24deg 36deg, transparent 36deg 60deg);
+    mask: radial-gradient(closest-side, transparent 0 72%, black 73%);
+    animation: spin 5s linear infinite;
+    filter: blur(1px);
   }
-  button:hover {
-    background: #0056b3;
+  .casino-lights::after{ animation-duration:8s; opacity:0.7; transform-origin:center; filter: blur(3px) saturate(1.2); }
+  @keyframes spin{ from{ transform:rotate(0deg);} to{ transform:rotate(360deg);} }
+
+  /* golden arrow (placed below wheel, pointing up) */
+  .arrow {
+    position:absolute;
+    bottom:-30px; /* below canvas */
+    left:50%;
+    transform:translateX(-50%);
+    width:0; height:0;
+    border-left:18px solid transparent;
+    border-right:18px solid transparent;
+    border-top:30px solid var(--gold3); /* triangle pointing up */
+    filter: drop-shadow(0 6px 6px rgba(0,0,0,0.45));
+    z-index:5;
   }
-  .hidden {
-    display: none;
+
+  #spinBtn{
+    margin-top:18px;padding:12px 26px;border-radius:10px;border:none;font-weight:700;
+    background:linear-gradient(90deg,var(--gold2),var(--gold3)); color:#000; cursor:pointer; box-shadow:0 8px 20px rgba(255,215,0,0.22);
   }
-  input[type="password"] {
-    padding: 10px;
-    width: 80%;
-    font-size: 16px;
-    border: 1px solid #ccc;
-    border-radius: 8px;
-  }
+  #spinBtn:disabled{background:#666;color:#ddd;cursor:not-allowed}
+
+  .modal{ display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); align-items:center; justify-content:center; z-index:60; }
+  .modal-content{ background:#fff;color:#000;padding:18px;border-radius:10px;width:92%;max-width:380px; text-align:center; }
+  input{ padding:10px;width:92%;margin:8px 0;border-radius:8px;border:1px solid #ccc;font-size:16px; }
+  .btn{ padding:10px 14px;border-radius:8px;border:none;background:#007bff;color:#fff;cursor:pointer;margin:6px; }
+  .close-btn{ background:#111;color:#fff; }
+  #whatsappBtn{ background:linear-gradient(90deg,#25D366,#128C7E); color:#fff; border:none;padding:10px 12px;border-radius:8px; cursor:pointer; margin-top:8px; font-weight:700; }
+
+  #qrcode{ margin:10px auto; width:120px; height:120px; }
+
+  .info{ max-width:760px; margin-top:18px; background:#fff;color:#000;padding:12px;border-radius:8px; box-shadow:0 8px 18px rgba(0,0,0,0.08); text-align:left; }
 </style>
 </head>
 <body>
-  <h2>Painel Administrativo</h2>
+<h2>🎰 Roleta Premiada</h2>
 
-  <div id="loginSection" class="container">
-    <p>Digite a senha para acessar:</p>
-    <input type="password" id="passwordInput" placeholder="Senha de acesso">
-    <br><br>
-    <button id="loginBtn">Entrar</button>
+<div class="wheel-wrap" aria-hidden="false">
+  <canvas id="wheel" width="320" height="320" aria-label="Roleta"></canvas>
+  <div class="arrow" aria-hidden="true"></div>
+  <div class="casino-lights" aria-hidden="true"></div>
+</div>
+
+<button id="spinBtn">Girar</button>
+
+<!-- phone modal -->
+<div id="phoneModal" class="modal" aria-hidden="true">
+  <div class="modal-content">
+    <h3>Informe seu telefone</h3>
+    <input id="phoneInput" placeholder="DDD + número (somente dígitos)" maxlength="13" />
+    <div>
+      <button id="savePhoneBtn" class="btn">Salvar</button>
+      <button id="cancelPhoneBtn" class="btn close-btn">Cancelar</button>
+    </div>
+    <p style="font-size:13px;color:#444;margin-top:8px;">Após salvar, clique em <strong>Girar</strong> novamente para iniciar o sorteio.</p>
   </div>
+</div>
 
-  <div id="dashboard" class="container hidden">
-    <h3>Controle da Roleta</h3>
-    <button id="resetBtn">Resetar dados</button>
-    <button id="openSheetBtn">Abrir Planilha</button>
-    <button id="openRoletaBtn">Abrir Roleta</button>
-    <p id="statusMsg" style="margin-top:10px;color:#333;font-weight:bold;"></p>
+<!-- result modal -->
+<div id="resultModal" class="modal" aria-hidden="true">
+  <div class="modal-content">
+    <h2 id="resultTitle" style="margin:6px 0;font-size:20px;"></h2>
+    <div id="qrcode"></div>
+    <div>
+      <button id="whatsappBtn">📲 Enviar via WhatsApp</button>
+    </div>
+    <div>
+      <button id="closeRes" class="btn close-btn">Fechar</button>
+    </div>
   </div>
+</div>
 
-  <script>
-  const CORRECT_PASSWORD = "adm0832";
-  const SHEET_URL = "https://docs.google.com/spreadsheets/d/1OAQIPaTq8wXMo_o3snjMRwA2P1FN5Z1ecjTFPIghQLM/edit?gid=0#gid=0";
-  const RESET_API_URL = "https://script.google.com/macros/s/AKfycbxIjpHdsFx0TyHRs8YDe7fZlJ0l88SPQRklLu2QTMquIeHvvMuIr01ZRY-8GQi7yzXx/exec?action=reset";
+<div class="info">
+  <strong>Como participar:</strong>
+  <ol>
+    <li>Clique em <em>Girar</em> — o sistema pedirá seu telefone (mesmo que já tenha salvo).</li>
+    <li>Salve o telefone e em seguida clique em <em>Girar</em> novamente para iniciar o sorteio.</li>
+  </ol>
+  <p>Regras: cada telefone só pode girar uma vez (exceto ADM). Promoção válida até 10 de janeiro.</p>
+</div>
 
-  const loginSection = document.getElementById("loginSection");
-  const dashboard = document.getElementById("dashboard");
-  const statusMsg = document.getElementById("statusMsg");
+<script>
+/* ---------- CONFIG ---------- */
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxIjpHdsFx0TyHRs8YDe7fZlJ0l88SPQRklLu2QTMquIeHvvMuIr01ZRY-8GQi7yzXx/exec";
+const OWNER_WHATSAPP = "SEU_NUMERO_AQUI";             // substituir por exemplo: 5577981633924
+const ADMIN_PHONE = "SEU_NUMERO_ADMIN_AQUI";          // substituir por exemplo: 77998652620
+const ADMIN_TAG = "ADM";
 
-  document.getElementById("loginBtn").addEventListener("click", () => {
-    const input = document.getElementById("passwordInput").value.trim();
-    if (input === CORRECT_PASSWORD) {
-      loginSection.classList.add("hidden");
-      dashboard.classList.remove("hidden");
-    } else {
-      alert("Senha incorreta!");
-    }
-  });
+/* ---------- PRIZES ---------- */
+const prizes = [
+  { label: "DESIGN 50%" },
+  { label: "FIO A FIO 50%" },
+  { label: "SHADOW L. 50%" },
+  { label: "DESIGN 100%" },
+  { label: "FIO A FIO 100%" },
+  { label: "SHADOW L. 100%" }
+];
 
-  document.getElementById("resetBtn").addEventListener("click", async () => {
-    if (!confirm("Tem certeza que deseja resetar todos os dados e a planilha?")) return;
+const prizesSequence = [
+  'DESIGN 50%','DESIGN 50%','DESIGN 50%','DESIGN 50%','DESIGN 50%',
+  'FIO A FIO 50%','FIO A FIO 50%','FIO A FIO 50%',
+  'DESIGN 50%','DESIGN 50%','DESIGN 50%','DESIGN 50%','DESIGN 50%',
+  'SHADOW L. 50%','SHADOW L. 50%',
+  'DESIGN 50%','DESIGN 50%','DESIGN 50%','DESIGN 50%','DESIGN 50%',
+  'FIO A FIO 50%','FIO A FIO 50%','FIO A FIO 50%',
+  'DESIGN 50%','DESIGN 50%','DESIGN 50%',
+  'FIO A FIO 50%','FIO A FIO 50%',
+  'SHADOW L. 100%',
+  'DESIGN 100%','DESIGN 100%',
+  'DESIGN 50%','DESIGN 50%',
+  'SHADOW L. 50%','SHADOW L. 50%',
+  'FIO A FIO 100%',
+  'FIO A FIO 50%','FIO A FIO 50%',
+  'DESIGN 100%','DESIGN 100%','DESIGN 100%',
+  'SHADOW L. 50%',
+  'DESIGN 100%','DESIGN 100%',
+  'FIO A FIO 100%',
+  'SHADOW L. 100%',
+  'FIO A FIO 100%'
+];
 
-    // Limpa dados locais da roleta
-    localStorage.removeItem("wheelHasSpun");
-    localStorage.removeItem("usedPhones");
-    localStorage.removeItem("wheelPhone");
-    statusMsg.textContent = "Dados locais resetados...";
+/* ---------- CANVAS DRAW (gold metallic + centered text) ---------- */
+const canvas = document.getElementById("wheel");
+const ctx = canvas.getContext("2d");
+const cx = canvas.width / 2, cy = canvas.height / 2;
+const r = Math.min(cx, cy) - 12;
 
-    // Chama o Apps Script para limpar a planilha
-    try {
-      const res = await fetch(RESET_API_URL);
-      if (res.ok) {
-        statusMsg.textContent = "✅ Planilha e dados locais resetados com sucesso!";
-      } else {
-        statusMsg.textContent = "⚠️ Erro ao tentar resetar a planilha (verifique o Apps Script).";
+function goldGrad(s,e){
+  const g = ctx.createRadialGradient(0, -r*0.2, r*0.02, 0, -r*0.2, r);
+  g.addColorStop(0, "#FFF9E6");
+  g.addColorStop(0.25, "#FFEFB3");
+  g.addColorStop(0.45, "#FFD95A");
+  g.addColorStop(0.7, "#D4AF37");
+  g.addColorStop(1, "#7a5e00");
+  return g;
+}
+function blackGrad(s,e){
+  const g = ctx.createLinearGradient(Math.cos(s)*r*0.2, Math.sin(s)*r*0.2, Math.cos(e)*r*0.9, Math.sin(e)*r*0.9);
+  g.addColorStop(0, "#4a4a4a");
+  g.addColorStop(0.5, "#222222");
+  g.addColorStop(1, "#000000");
+  return g;
+}
+function drawWrappedText(context, text, x, y, maxWidth){
+  if(context.measureText(text).width <= maxWidth){ context.fillText(text,x,y); return; }
+  const parts = text.split(' '); let line='', lines=[];
+  for(let n=0;n<parts.length;n++){
+    const testLine = line ? (line + ' ' + parts[n]) : parts[n];
+    if(context.measureText(testLine).width > maxWidth && line){ lines.push(line); line = parts[n]; }
+    else line = testLine;
+  }
+  if(line) lines.push(line);
+  const offset = (lines.length - 1) * -8;
+  for(let i=0;i<lines.length;i++) context.fillText(lines[i], x, y + offset + i*16);
+}
+
+function drawWheel(rotation=0){
+  const c = prizes.length, a = 2*Math.PI/c;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.save();
+  ctx.translate(cx,cy);
+  ctx.rotate(rotation);
+
+  // rim shine
+  ctx.beginPath();
+  ctx.arc(0,0,r+8,0,2*Math.PI);
+  const rim = ctx.createRadialGradient(0,0,r*0.5,0,0,r+8);
+  rim.addColorStop(0,'rgba(255,255,255,0.12)');
+  rim.addColorStop(1,'rgba(0,0,0,0.35)');
+  ctx.fillStyle = rim; ctx.fill();
+
+  for(let i=0;i<c;i++){
+    const s = i*a, e = s+a;
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.arc(0,0,r,s,e);
+    const isGold = (i % 2 === 1);
+    ctx.fillStyle = isGold ? goldGrad(s,e) : blackGrad(s,e);
+    ctx.fill();
+    ctx.strokeStyle = '#0d0d0d'; ctx.lineWidth = 1.6; ctx.stroke();
+
+    // text: center along arc
+    ctx.save();
+    const mid = s + a/2;
+    ctx.rotate(mid + Math.PI / prizes.length / 2); // slight compensation
+    ctx.translate(0, -r*0.62);
+    ctx.rotate(Math.PI/2);
+    ctx.font = "bold 13px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = isGold ? '#000' : '#FFD700';
+    drawWrappedText(ctx, prizes[i].label, 0, 0, 110);
+    ctx.restore();
+  }
+
+  // center hub
+  ctx.beginPath(); ctx.arc(0,0,r*0.12,0,2*Math.PI);
+  const hub = ctx.createRadialGradient(0,0,2,0,0,r*0.12); hub.addColorStop(0,'#fff'); hub.addColorStop(0.6,'rgba(255,255,255,0.2)'); hub.addColorStop(1,'rgba(255,255,255,0)');
+  ctx.fillStyle = hub; ctx.fill();
+  ctx.beginPath(); ctx.arc(0,0,9,0,2*Math.PI); ctx.fillStyle='#b80000'; ctx.fill();
+
+  ctx.restore();
+}
+drawWheel();
+
+/* ---------- LOGIC ---------- */
+let spinning = false;
+let currentIndex = parseInt(localStorage.getItem('currentIndex')||'0',10);
+let usedPhones = JSON.parse(localStorage.getItem('usedPhones')||'[]');
+let currentPrize = "";
+
+/* arrow target angle (degrees) - arrow points UP from bottom (north) == 270deg */
+const ARROW_DEG = 270;
+function degToRad(d){ return d * Math.PI / 180; }
+
+document.getElementById('spinBtn').addEventListener('click', ()=>{
+  if(spinning) return;
+  // always request phone first (prefill if already saved)
+  const stored = localStorage.getItem('wheelPhone') || '';
+  document.getElementById('phoneInput').value = stored;
+  document.getElementById('phoneModal').style.display = 'flex';
+});
+
+/* Phone modal behavior */
+document.getElementById('cancelPhoneBtn').addEventListener('click', ()=>{
+  document.getElementById('phoneModal').style.display = 'none';
+});
+document.getElementById('savePhoneBtn').addEventListener('click', ()=>{
+  const raw = document.getElementById('phoneInput').value.trim().replace(/\D/g,'');
+  if(!/^\d{10,13}$/.test(raw)){ alert('Digite um telefone válido (somente dígitos, 10–13 caracteres)'); return; }
+  localStorage.setItem('wheelPhone', raw);
+  document.getElementById('phoneModal').style.display = 'none';
+  // user must click "Girar" again to actually spin
+});
+
+/* When user clicks spin and modal is not open -> start spin */
+document.getElementById('spinBtn').addEventListener('click', ()=>{
+  if(spinning) return;
+  if(document.getElementById('phoneModal').style.display === 'flex') return;
+  const phone = localStorage.getItem('wheelPhone') || '';
+  if(!phone){ alert('Informe seu telefone antes de girar.'); return; }
+  startSpinWithPhone(phone);
+});
+
+function startSpinWithPhone(phone){
+  if(spinning) return;
+  if(phone !== ADMIN_PHONE && usedPhones.includes(phone)){ alert('Este número já participou da promoção.'); return; }
+
+  spinning = true;
+  const targetIndex = currentIndex % prizesSequence.length;
+  const targetLabel = prizesSequence[targetIndex];
+  const prizeIndex = prizes.findIndex(p=>p.label===targetLabel);
+  const spins = 4 + Math.floor(Math.random()*3);
+  const degreesPerSector = 360 / prizes.length;
+  const sectorMid = prizeIndex * degreesPerSector + degreesPerSector/2;
+  const offset = (Math.random()*6) - 3; // small random jitter
+  const finalDegrees = spins*360 + (ARROW_DEG - sectorMid) + offset;
+  const start = performance.now();
+  const duration = 4200 + Math.random()*800;
+
+  function animate(now){
+    const t = Math.min(1,(now-start)/duration);
+    const ease = 1 - Math.pow(1-t,3);
+    const curDeg = finalDegrees * ease;
+    drawWheel(degToRad(curDeg));
+    if(t < 1) requestAnimationFrame(animate); else {
+      spinning = false;
+      currentIndex++;
+      currentPrize = targetLabel;
+      if(phone !== ADMIN_PHONE){
+        usedPhones.push(phone);
+        localStorage.setItem('usedPhones', JSON.stringify(usedPhones));
       }
-    } catch (e) {
-      statusMsg.textContent = "❌ Falha ao conectar com o servidor do Google Apps Script.";
+      localStorage.setItem('currentIndex', currentIndex);
+      showResult(targetLabel, phone);
     }
-  });
+  }
+  requestAnimationFrame(animate);
+}
 
-  document.getElementById("openSheetBtn").addEventListener("click", () => {
-    window.open(SHEET_URL, "_blank");
-  });
+/* ---------- RESULT & WHATSAPP & SHEETS ---------- */
+function showResult(label, phone){
+  const modal = document.getElementById('resultModal');
+  document.getElementById('resultTitle').textContent = label;
+  modal.style.display = 'flex';
+  document.getElementById('qrcode').innerHTML = '';
+  new QRCode(document.getElementById("qrcode"), { text: window.location.href, width:120, height:120 });
 
-  document.getElementById("openRoletaBtn").addEventListener("click", () => {
-    window.open("index.html", "_blank");
-  });
-  </script>
+  // WhatsApp button
+  document.getElementById('whatsappBtn').onclick = () => {
+    const owner = OWNER_WHATSAPP;
+    const msg = `🎉 Olá! Ganhei na Roleta Premiada!\n🏆 Prêmio: ${label}\n📱 Telefone: ${phone}`;
+    window.open(`https://wa.me/${owner}?text=${encodeURIComponent(msg)}`, "_blank");
+  };
+
+  // Send JSON to Apps Script (using fetch with JSON body)
+  try{
+    const payload = { phone: phone, prize: label, date: new Date().toISOString(), admin: (phone===ADMIN_PHONE ? ADMIN_TAG : '') };
+    fetch(GOOGLE_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }).catch(()=>{/* silent */});
+  }catch(e){ console.warn('Erro envio sheets', e); }
+}
+
+document.getElementById('closeRes').addEventListener('click', ()=>{ document.getElementById('resultModal').style.display='none'; });
+
+/* ---------- init ---------- */
+(function(){ drawWheel(); })();
+</script>
 </body>
 </html>
